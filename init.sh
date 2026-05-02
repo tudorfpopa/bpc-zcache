@@ -1,5 +1,5 @@
 # add files relevant to bpc into gem5
-cp -r ./bpc.* ./gem5/src/mem/cache/compressors/
+cp -r ./bpc/* ./gem5/src/mem/cache/compressors/
 
 # add files relevent to zcache into gem5
 cp -r ./zcache/zcache_index.* ./gem5/src/mem/cache/tags/indexing_policies/ # indexing policy
