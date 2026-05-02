@@ -8,8 +8,8 @@
 
 namespace gem5::compression {
 
-BPC::BPC(const BaseCacheCompressorParams& p)
-    : Base(p)
+BPC::BPC(const BPCParams& p)
+    : Base(p), maxCompressionRatio(p.max_compression_ratio)
 {
 }
 
@@ -95,6 +95,12 @@ BPC::compress(const std::vector<Base::Chunk>& chunks,
 
         comp_data->tags.push_back(tag);
         prev_plane = plane;
+    }
+
+    if (maxCompressionRatio > 0) {
+        const int floor_bits = (blkSize * 8) / maxCompressionRatio;
+        if (compressed_bits < floor_bits)
+            compressed_bits = floor_bits;
     }
 
     comp_data->setSizeBits(compressed_bits);

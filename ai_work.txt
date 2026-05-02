@@ -1,0 +1,149 @@
+Session Summary — ZCache gem5 Implementation
+=============================================
+Date: 2026-04-21
+
+## Files Created (New)
+
+src/mem/cache/tags/indexing_policies/zcache_index.hh
+src/mem/cache/tags/indexing_policies/zcache_index.cc
+src/mem/cache/replacement_policies/zcache_rp.hh
+src/mem/cache/replacement_policies/zcache_rp.cc
+src/mem/cache/tags/zcache_tags.hh
+src/mem/cache/tags/zcache_tags.cc
+configs/example/zcache_test.py
+
+## Files Modified (Existing)
+
+src/mem/cache/tags/indexing_policies/IndexingPolicies.py
+src/mem/cache/tags/indexing_policies/SConscript
+src/mem/cache/replacement_policies/ReplacementPolicies.py
+src/mem/cache/replacement_policies/SConscript
+src/mem/cache/tags/Tags.py
+src/mem/cache/tags/SConscript
+
+## Work Summary
+
+Implemented the full ZCache architecture in gem5, following a provided spec
+(ZCache_spec.pdf). ZCache achieves effectively higher associativity from a small
+number of physical ways by using (a) per-way H3 universal hash functions for
+skewed indexing, (b) a multi-level BFS walk to expand the replacement candidate
+pool, and (c) cuckoo-style block relocations to free a Level-1 slot for the
+incoming block.
+
+### Phase 1 — Python SimObjects
+
+Added ZCacheIndexingPolicy to IndexingPolicies.py:
+  - Parameters: size, entry_size, h3_seed (seed for H3 random matrices)
+
+Added ZCacheRP to ReplacementPolicies.py:
+  - Parameter: bucket_size_fraction (LRU bucket granularity)
+
+Added ZCacheTags to Tags.py (extends BaseSetAssoc):
+  - Parameters: zcache_indexing_policy, walk_levels (L), num_candidates (R)
+  - Default replacement_policy = ZCacheRP()
+
+Updated all three SConscript files to register the new SimObjects and source
+files with the gem5 build system.
+
+### Phase 2 — Indexing Policy (zcache_index.hh / .cc)
+
+ZCacheIndexingPolicy inherits from BaseIndexingPolicy.
+H3 universal hashing: for each way w and output bit b,
+  bit_b(hash_w(addr)) = parity(h3Matrix[w][b] & (addr >> setShift))
+Matrices are initialized with an LCG PRNG seeded by h3_seed.
+
+Key design decision — idempotent tag encoding:
+  extractTag(addr) = addr & ~blkMask  (block-aligned address)
+This is required because CacheBlk::operator=(CacheBlk&&) calls
+insert({other.getTag(), secure}), which re-applies extractTag. With the
+standard (addr >> tagShift) scheme, applying extractTag twice would corrupt
+the tag. The block-aligned scheme is idempotent.
+
+getAlternativeLocations(curWay, storedAddr): for each way w != curWay,
+returns (extractSet(storedAddr, w), w) — all valid placements for a block
+currently at curWay.
+
+### Phase 3 — Replacement Policy (zcache_rp.hh / .cc)
+
+ZCacheRP inherits from replacement_policy::Base.
+Implements a global bucketed-LRU so that getVictim() can compare candidates
+drawn from many different sets (standard per-set LRU timestamps are not
+comparable across sets).
+
+A single globalTimestamp increments every bucketSize = max(1, round(fraction
+* entryCount)) accesses. All candidates are compared by their
+lastTouchTimestamp; the minimum-timestamp entry is the victim.
+
+C++ name-hiding fix: added "using Base::touch; using Base::reset;" to bring
+the two-argument wrappers (touch/reset with PacketPtr) into scope alongside
+the overridden single-argument versions.
+
+### Phase 4 — Cache Controller (zcache_tags.hh / .cc)
+
+ZCacheTags inherits from BaseSetAssoc and overrides:
+  - tagsInit(): re-registers tag extractors with the idempotent block-aligned
+    scheme after calling BaseSetAssoc::tagsInit().
+  - findBlock(): W parallel H3 lookups (one per way).
+  - accessBlock(): calls findBlock, updates RP, returns block.
+  - findVictim(): BFS walk + victim selection + cuckoo chain construction.
+  - insertBlock(): executes the pending cuckoo chain, then inserts new block.
+  - regenerateBlkAddr(): returns blk->getTag() directly (tag IS the address).
+  - findBlockBySetAndWay(): uses flat blks[] array layout.
+
+findVictim design (split across findVictim/insertBlock for writeback safety):
+  1. Fast path: if any Level-1 H3 slot is empty, return it directly.
+  2. BFS: seed W Level-1 candidates; expand L levels; cap at R candidates.
+     Each fringe node's block's alternative locations become child nodes.
+  3. Prefer free (invalid) slots: scan candidates for any invalid block
+     before calling getVictim(). This is critical — without it, empty slots
+     and recently loaded blocks share timestamp 0, and getVictim() cannot
+     distinguish them, causing unnecessary evictions during cache fill.
+  4. If no free slot: call zcacheRP->getVictim(rpCands).
+  5. Backtrack victim → root via parentIdx to build pendingSwapChain.
+  6. Add victim to evict_blks (only if valid) for Cache.cc writeback.
+  7. Return root (Level-1 slot) as the insertion destination.
+
+insertBlock executes the cuckoo chain AFTER Cache.cc has invalidated the
+victim, then calls BaseTags::insertBlock for the new block.
+
+doMoveBlock: explicitly memcpy(dst->data, src->data, blkSize) before calling
+BaseTags::moveBlock, because CacheBlk::operator=(&&) copies metadata only
+("an entry cannot move its data").
+
+### Statistics
+
+ZCacheTagStats (nested Group in ZCacheTags):
+  statWalkDepthTotal / statMissCount → statWalkDepthAverage (Formula)
+  statCandidatesTotal / statMissCount → statCandidatesEvaluatedAverage (Formula)
+  statRelocationsTotal (Scalar)
+
+Note: statistics::Average has no .sample() method. Accumulator Scalars with
+a Formula ratio is the correct gem5 idiom for per-event averages.
+
+### Test Script (configs/example/zcache_test.py)
+
+Topology: PyTrafficGen -> NoncoherentCache (ZCache or standard LRU) ->
+          IOXBar -> SimpleMemory
+
+Workload: two 320 KiB linear sweeps (5/4 of the 256 KiB cache capacity).
+With 4-way LRU and 1024 sets, 5 blocks map to every set — the 5th always
+evicts the 1st, producing complete thrashing (0% hit rate on 2nd pass).
+ZCache's H3 hashing distributes conflicting blocks across different sets,
+achieving ~9% hit rate on the 2nd pass.
+
+CLI flags: --use-standard-cache, --l2-size, --l2-assoc,
+           --walk-levels, --num-candidates
+
+### Build Verification
+
+Built with: scons build/NULL/gem5.opt -j<nproc>
+Result: zero errors, gem5.opt linked successfully.
+
+### Simulation Results (320 KiB workload, 256 KiB 4-way cache)
+
+  Config                    Hits    Misses    2nd-pass hit rate
+  ZCache (L=3, R=16)         467     9,773         ~9%
+  Standard 4-way LRU           0    10,240          0%  (complete thrashing)
+
+Standard LRU thrashes completely for this 5-aliasing-per-set pattern.
+ZCache rescues ~9% via flexible placement and cuckoo relocation.

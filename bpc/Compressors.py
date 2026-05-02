@@ -329,6 +329,14 @@ class BPC(BaseCacheCompressor):
     cxx_class = 'gem5::compression::BPC'
     cxx_header = "mem/cache/compressors/bpc.hh"
 
+    max_compression_ratio = Param.Int(
+        0,
+        "Cap on BPC's reported compression ratio (0 = uncapped, the real "
+        "BPC size is reported). Otherwise compressed size is clamped up "
+        "to blkSize / max_compression_ratio. Set to match the value passed "
+        "to CompressedTags so storage and reported size agree.",
+    )
+
 class BDI(MultiCompressor):
     compressors = [
         ZeroCompressor(size_threshold_percentage=99),

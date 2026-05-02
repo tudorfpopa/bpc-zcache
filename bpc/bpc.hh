@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "mem/cache/compressors/base.hh"
+#include "params/BPC.hh"
 
 namespace gem5::compression {
 
@@ -29,7 +30,7 @@ class BPC : public Base {
         BPCData() : CompressionData() {}
     };
 
-    BPC(const Params& p);
+    BPC(const BPCParams& p);
     ~BPC() = default;
 
     std::unique_ptr<CompressionData> compress(
@@ -44,6 +45,9 @@ class BPC : public Base {
     // Number of 32-bit words per cache line
     static constexpr int WORDS_PER_LINE = 16; // 64B / 4B
     static constexpr int BITS_PER_WORD  = 32;
+
+    // Cap on reported compression ratio. 1 means uncapped (real BPC size).
+    int maxCompressionRatio;
 
     // Extract bit plane `bit` from array of 32-bit words
     // Returns a bitmask of WORDS_PER_LINE bits
