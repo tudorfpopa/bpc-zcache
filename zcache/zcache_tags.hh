@@ -36,7 +36,7 @@ namespace gem5
 
 class ZCacheTags : public BaseSetAssoc
 {
-  private:
+  protected:
     // ZCache-specific indexing (H3 hash per way)
     ZCacheIndexingPolicy* const zcacheIP;
 
@@ -63,7 +63,8 @@ class ZCacheTags : public BaseSetAssoc
     // Move src's metadata + data bytes to dst; dst must be invalid.
     // Does NOT call BaseSetAssoc::invalidate (avoids double-decrement of
     // tagsInUse) — replacement data is handled inline.
-    void doMoveBlock(CacheBlk* src, CacheBlk* dst);
+    // Virtual so ZCacheTagsNew can intercept to migrate dataPtr metadata.
+    virtual void doMoveBlock(CacheBlk* src, CacheBlk* dst);
 
     // BFS walk info node
     struct ZWalkInfo

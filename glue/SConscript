@@ -1,0 +1,21 @@
+# -*- mode:python -*-
+# SConscript fragment for the Compressed Decoupled ZCache glue layer.
+# This file is overlaid into gem5/src/mem/cache/tags/ by init.sh and merged
+# with the existing tags/SConscript by gem5's build system.
+
+Import("*")
+
+SimObject(
+    "ZCacheGlue.py",
+    sim_objects=[
+        "DecoupledDataStore",
+        "FragReservoir",
+        "ZCacheTagsNew",
+        "ZCacheGlue",
+    ],
+)
+
+Source("decoupled_data_store.cc")
+Source("frag_reservoir.cc")
+Source("zcache_tags_new.cc")
+Source("zcache_glue.cc")

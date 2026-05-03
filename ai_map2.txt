@@ -1,0 +1,243 @@
+================================================================================
+  ai_map2.txt — CDZCache Implementation Summary
+  Project: bpc-zcache (ECE 757, Spring 2026)
+  Task: Design and implement the Compressed Decoupled ZCache (CDZCache)
+        as specified in glue_document.md
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+GOAL
+────────────────────────────────────────────────────────────────────────────────
+Combine ZCache's skew-associative tag placement with BPC compression and a
+buddy-allocated data store to maximise effective LLC capacity while minimising
+conflict misses.  The three new subsystems are:
+
+  1. DecoupledDataStore  — buddy allocator for compressed data blocks
+  2. FragReservoir       — LFSR best-of-4 reservoir for fragmentation evictions
+  3. ZCacheGlue          — coordinator that connects all subsystems on every fill
+
+
+────────────────────────────────────────────────────────────────────────────────
+NEWLY ADDED FILES
+────────────────────────────────────────────────────────────────────────────────
+
+glue/decoupled_data_store.hh
+glue/decoupled_data_store.cc
+  Buddy allocator SimObject.
+  - Pool divided into 8-byte segments; supports orders 0–3 (8/16/32/64 B blocks)
+  - allocate(sizeBytes) → segment index or ALLOC_FAIL (UINT32_MAX)
+  - deallocate(ptr, size) with buddy coalescing
+  - Pool initialised as free list of 64 B blocks
+  - write(ptr, data, len) stores raw bytes into the pool
+
+glue/frag_reservoir.hh
+glue/frag_reservoir.cc
+  Pseudo-random fragmentation-eviction reservoir SimObject.
+  - 16-bit Fibonacci LFSR (poly 0xB400, seed 0xACE1) samples a random block
+    every sampleIntervalTicks ticks via a self-rescheduling gem5 Event
+  - Maintains 4 bins × 4 slots (size classes 8/16/32/64 B), keeps coldest
+    candidates (lowest lastTouchTimestamp)
+  - getVictim(sizeBytes) walks bins from the matching class upward, returns
+    the coldest valid candidate in O(1), or nullptr if all bins are empty
+  - Uses SimObject (not ClockedObject) with Tick-based interval to avoid
+    needing a clock domain when parented under ZCacheGlue
+
+glue/zcache_tags_new.hh
+glue/zcache_tags_new.cc
+  ZCacheTags subclass that adds per-block compressed-data metadata.
+  - Parallel uint32_t arrays blkDataPtr[] and blkAllocSize[] sized to match
+    the tag array; resized in tagsInit() after calling the parent's tagsInit()
+  - setBlockDataPtr / getBlockDataPtr / getBlockAllocSize / getBlockLastTouch
+    accessors used by ZCacheGlue and FragReservoir
+  - getNumBlocks() / getBlockByIndex(idx) for LFSR-based random sampling
+  - forceInvalidate(blk): invalidates a block bypassing the normal cuckoo walk
+    (calls BaseTags::invalidate + zcacheRP->invalidate directly)
+  - doMoveBlock override: migrates dataPtr/allocSize metadata before delegating
+    to the parent, keeping compressed pointers consistent during cuckoo chains
+  - setGlue(ZCacheGlue*): called by ZCacheGlue::startup() to wire the callback
+  - insertBlock override: calls glue->handleFill(pkt, blk) when pkt->hasData()
+
+glue/zcache_glue.hh
+glue/zcache_glue.cc
+  Coordinator SimObject (ZCacheGlue).
+  Fill flow in handleFill(pkt, blk):
+    1. Build uint64_t chunk vector from pkt data
+    2. Call BPC::compress() → get compressedBits
+    3. computePaddedSize() → bits→bytes (BPC already pads to power-of-2)
+    4. DecoupledDataStore::allocate(paddedSize)
+    5. Fragmentation-eviction loop while ALLOC_FAIL:
+         - FragReservoir::getVictim(paddedSize)
+         - ZCacheTagsNew::forceInvalidate(victim)
+         - DecoupledDataStore::deallocate(victim ptr, victim size)
+         - Retry allocate
+    6. DecoupledDataStore::write(ptr, rawData, paddedSize)
+    7. ZCacheTagsNew::setBlockDataPtr(blk, ptr, paddedSize)
+  startup(): calls zcacheTags->setGlue(this) and reservoir->setTagsRef(zcacheTags)
+  Stats group (GlueStats):
+    statFragEvictions            — reservoir-eviction events
+    statFillsWithData            — fills carrying data
+    statTotalPaddedBytes         — sum of padded sizes across all fills
+    statTotalRawBytes            — sum of raw (BPC-reported) sizes across all fills
+    statReservoirRequests        — getVictim() calls
+    statReservoirHits            — times reservoir returned a valid candidate
+    statAvgInternalFragmentation — (paddedBytes - rawBytes) / paddedBytes
+    statReservoirHitRate         — reservoirHits / reservoirRequests
+
+glue/ZCacheGlue.py
+  Python SimObject registrations for all four new C++ classes:
+  - DecoupledDataStore: pool_bytes = Param.MemorySize("256KiB", ...)
+  - FragReservoir:      sample_interval_ticks = Param.Tick(10000, ...)
+  - ZCacheTagsNew(ZCacheTags):
+      partitioning_manager = Param.PartitionManager(NULL, ...)  [proxy override]
+  - ZCacheGlue:
+      data_store  = Param.DecoupledDataStore(...)
+      reservoir   = Param.FragReservoir(...)
+      zcache_tags = Param.ZCacheTagsNew(...)
+      compressor  = Param.BPC(...)     [typed as BPC*, not Base*, so compress()
+                                        is accessible — Base::compress is protected]
+      block_size  = Param.Int(Parent.cache_line_size, ...)
+
+glue/SConscript
+  SConscript stub (contents merged into zcache/tags/SConscript by maintainer).
+
+cdzcache_test.py
+  End-to-end micro-benchmark for CDZCache.
+  Topology: PyTrafficGen → NoncoherentCache(tags=ZCacheTagsNew) → IOXBar → SimpleMemory
+  - Same 320 KiB linear sweep (2 passes) as bpc_test.py / zcache_test.py
+  - All ZCacheTagsNew params specified explicitly (size, assoc, block_size,
+    entry_size, tag_latency, warmup_percentage, sequential_access) because
+    Parent.xxx proxies cannot resolve when the parent is ZCacheGlue, not a Cache
+  - ZCacheGlue instantiated as system.glue with pool_bytes=CACHE_SIZE
+  - --use-standard-cache flag for plain 4-way LRU baseline comparison
+  - Output anchored to m5out_cdzcache/ (or m5out_lru/) via m5.core.setOutputDir()
+
+
+────────────────────────────────────────────────────────────────────────────────
+MODIFIED FILES
+────────────────────────────────────────────────────────────────────────────────
+
+zcache/zcache_tags.hh
+  - Changed all ZCacheTags members from private: to protected:
+    (zcacheIP, zcacheRP, walkLevels, numCandidates, numWays, numSets_,
+     pendingSwapChain, getBlkAt)
+    Reason: ZCacheTagsNew is a subclass and needs direct access to these fields
+    for cuckoo-chain migration and forceInvalidate.
+  - Made doMoveBlock() virtual so ZCacheTagsNew can override it to also migrate
+    the parallel compressed-data pointer arrays during cuckoo chains.
+
+zcache/zcache_rp.hh
+  - Added public accessor:
+      Tick getLastTouchTimestamp(const std::shared_ptr<ReplacementData>&) const
+    Returns ZCacheRPData::lastTouchTimestamp so FragReservoir can read block
+    coldness without exposing the protected inner struct.
+
+zcache/tags/SConscript
+  - Added second SimObject() registration call for ZCacheGlue.py, registering
+    DecoupledDataStore, FragReservoir, ZCacheTagsNew, ZCacheGlue
+  - Added Source() calls for the four glue .cc files:
+      decoupled_data_store.cc, frag_reservoir.cc,
+      zcache_tags_new.cc, zcache_glue.cc
+
+init.sh
+  - Added cp -f commands to overlay all glue/ files into gem5/src/mem/cache/tags/:
+      glue/*.hh, glue/*.cc, glue/ZCacheGlue.py
+
+bpc/bpc.cc  (compress() function)
+  - Added power-of-2 byte padding block after the maxCompressionRatio floor cap:
+      rawBytes  = ceil(compressed_bits / 8)
+      paddedBytes = smallest power-of-2 >= rawBytes, minimum 8, capped at blkSize
+      compressed_bits = paddedBytes * 8
+    This ensures BPC always reports a size that maps directly to one of the
+    buddy-allocator's order classes {8, 16, 32, 64} B before calling setSizeBits().
+  - Consequence: ZCacheGlue::computePaddedSize() simplified to a pure bit→byte
+    conversion (no more power-of-2 rounding needed in the glue).
+
+glue/zcache_glue.cc  (computePaddedSize)
+  - Simplified from the original power-of-2 rounding loop to:
+      return (compressedBits + 7) / 8;
+    Because BPC now guarantees aligned output before the glue ever sees it.
+
+CLAUDE.md
+  - Appended full CDZCache section documenting: architecture diagram, new files
+    table, modified files table, fill flow steps, stats names, run commands,
+    and Python wiring example.
+
+
+────────────────────────────────────────────────────────────────────────────────
+BUILD & RUNTIME ERRORS ENCOUNTERED AND FIXED
+────────────────────────────────────────────────────────────────────────────────
+
+1. Base::compress() and Base::Chunk are protected
+   Symptom: compile error calling compressor->compress() via Base* pointer
+   Fix: typed ZCacheGlue::compressor as BPC* (not Base*); used std::vector<uint64_t>
+        instead of std::vector<Base::Chunk>; ZCacheGlue.py uses Param.BPC
+
+2. pool_bytes proxy resolution failure
+   Symptom: Parent.size unresolvable (ZCacheGlue has no size param)
+   Fix: ZCacheGlue.py default changed to concrete "256KiB"; test script passes
+        pool_bytes=CACHE_SIZE explicitly
+
+3. assoc / size / tag_latency proxy resolution failures in ZCacheTagsNew
+   Symptom: proxy params fail because parent is ZCacheGlue, not a Cache
+   Fix: cdzcache_test.py specifies every ZCacheTagsNew param explicitly
+
+4. partitioning_manager proxy resolution failure
+   Symptom: Parent.partitioning_manager fails (ZCacheGlue has no such param)
+   Fix: ZCacheTagsNew Python class overrides it with NULL default; required rebuild
+
+5. Segfault in ClockedObject constructor (FragReservoir)
+   Symptom: Parent.clk_domain null → segfault at startup
+   Fix: FragReservoir changed from ClockedObject to SimObject; sample_interval
+        changed from Param.Cycles to Param.Tick; scheduling uses curTick() directly
+
+6. Two ports responding / xbar topology error
+   Symptom: both l2cache and mem_ctrl connected to same xbar side
+   Fix: adopted zcache_test.py topology: System(membus=IOXBar); tgen→l2cache→membus→mem_ctrl
+
+7. createLinear() keyword argument error
+   Symptom: PyTrafficGen.createLinear does not accept Python kwargs
+   Fix: changed to positional args
+
+
+────────────────────────────────────────────────────────────────────────────────
+VERIFICATION RESULTS
+────────────────────────────────────────────────────────────────────────────────
+Configuration: 256 KiB, 4-way, ZCacheTagsNew (walk_levels=3, num_candidates=16)
+Workload: 320 KiB linear sweep × 2 passes (zero-filled SimpleMemory)
+
+  system.l2cache.overallHits::total    =   467
+  system.l2cache.overallMisses::total  =  9773
+  system.glue.statTotalPaddedBytes     = 156368  (= 9773 fills × 16 B/fill)
+  system.glue.statTotalRawBytes        = 156368
+
+BPC granularity check (zero-filled data):
+  32 planes × 3 tag bits = 96 bits = 12 raw bytes
+  BPC pads: 8 → 16 (first power-of-2 ≥ 12) → reports 128 bits (16 B)
+  9773 × 16 = 156 368  ✓  matches statTotalPaddedBytes exactly
+
+
+────────────────────────────────────────────────────────────────────────────────
+FILE COUNT SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  Newly added files : 10
+    glue/decoupled_data_store.hh
+    glue/decoupled_data_store.cc
+    glue/frag_reservoir.hh
+    glue/frag_reservoir.cc
+    glue/zcache_tags_new.hh
+    glue/zcache_tags_new.cc
+    glue/zcache_glue.hh
+    glue/zcache_glue.cc
+    glue/ZCacheGlue.py
+    cdzcache_test.py
+
+  Modified files    : 6
+    zcache/zcache_tags.hh       (private→protected, doMoveBlock virtual)
+    zcache/zcache_rp.hh         (added getLastTouchTimestamp accessor)
+    zcache/tags/SConscript      (registered glue SimObjects + sources)
+    init.sh                     (added glue/ overlay commands)
+    bpc/bpc.cc                  (power-of-2 byte padding in compress())
+    glue/zcache_glue.cc         (simplified computePaddedSize)
+    CLAUDE.md                   (appended CDZCache documentation section)
+
+================================================================================

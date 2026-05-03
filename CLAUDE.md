@@ -7,7 +7,8 @@ Research project on bit-plane compression caches (BPC) and ZCaches, simulated wi
 - `gem5/` — pristine gem5 submodule. Do **not** keep edits here; they are not tracked and will be clobbered the next time `init.sh` runs.
 - `bpc/` — BPC compressor: `bpc.{hh,cc,test.cc}`, `Compressors.py` (SimObject registration), `SConscript`, plus `compressed_tags.cc` (a patched copy of gem5's file — see "Gotchas").
 - `zcache/` — ZCache tags / indexing policy / replacement policy, with their `Sconscript` and Python registration files.
-- `init.sh` — copies everything in `bpc/` and `zcache/` into the matching gem5 source directories.
+- `glue/` — **Compressed Decoupled ZCache** glue layer (new). See "Compressed Decoupled ZCache" section below.
+- `init.sh` — copies everything in `bpc/`, `zcache/`, and `glue/` into the matching gem5 source directories.
 - `run_bpc_sanity.py` — gem5 stdlib config that runs an x86 hello-world with BPC in the L2.
 - `bpc_test.py`, `zcache_test.py` — CPU-less micro-benchmarks (`PyTrafficGen` → `NoncoherentCache` → `IOXBar` → `SimpleMemory`). Same workload (320 KiB linear sweep, twice). `bpc_test.py` swaps in `CompressedTags + BPC`; `zcache_test.py` swaps in `ZCacheTags`. Each takes `--use-standard-cache` for an LRU baseline.
 - `x86_boot_checkpoint.py` — full-system x86 checkpoint helper.
@@ -207,3 +208,108 @@ Stats to compare in `stats.txt`:
 - `system.l2cache.tags.statRelocationsTotal`
 
 Reference numbers on the 320 KiB sweep into a 256 KiB / 4-way cache: ZCache (L=3, R=16) gets 467 hits / 9 773 misses; standard 4-way LRU thrashes completely (0 / 10 240).
+
+---
+
+## Compressed Decoupled ZCache (CDZCache)
+
+### Goal
+
+Combines ZCache's logical associativity with BPC compression and a buddy-allocated data store to maximise effective LLC capacity while minimising conflict misses.
+
+### Architecture
+
+```
+CPU / Traffic Generator
+        │
+        ▼
+NoncoherentCache / Cache
+  tags = ZCacheTagsNew  ──(on every fill)──▶ ZCacheGlue
+                                                  │
+                         ┌────────────────────────┤
+                         │                        │
+                   DecoupledDataStore       FragReservoir
+                   (buddy allocator)        (LFSR + best-of-4
+                                             reservoir)
+```
+
+### New files (`glue/`)
+
+| File | Role |
+| --- | --- |
+| `glue/decoupled_data_store.hh/.cc` | `DecoupledDataStore` SimObject — buddy allocator (8 B segments, 8/16/32/64 B blocks, coalescing on free) |
+| `glue/frag_reservoir.hh/.cc` | `FragReservoir` ClockedObject — 16-bit LFSR sampler, 4 bins × 4 slots (best-of-4 LRU-ish), self-rescheduling gem5 Event every N cycles |
+| `glue/zcache_tags_new.hh/.cc` | `ZCacheTagsNew` — extends `ZCacheTags` with per-block `(dataPtr, allocSize)` parallel arrays; adds `forceInvalidate()` (bypasses cuckoo walk); overrides `doMoveBlock()` to also migrate compressed metadata during cuckoo chains |
+| `glue/zcache_glue.hh/.cc` | `ZCacheGlue` SimObject — coordinates compress → allocate → frag-evict loop → store on every `insertBlock`; exposes `totalFragEvictions`, `avgInternalFragmentation`, `reservoirHitRate` stats |
+| `glue/ZCacheGlue.py` | Python SimObject registrations for all four classes above |
+| `glue/SConscript` | Reference (contents merged into `zcache/tags/SConscript` by maintainer) |
+
+### Modifications to existing files
+
+| File | Change |
+| --- | --- |
+| `zcache/zcache_tags.hh` | `private:` → `protected:` so `ZCacheTagsNew` can access `zcacheIP`, `zcacheRP`, walk params, `pendingSwapChain`, `getBlkAt()`; `doMoveBlock` made `virtual` for subclass override |
+| `zcache/zcache_rp.hh` | Added `getLastTouchTimestamp(rd)` public accessor (reads `ZCacheRPData::lastTouchTimestamp` for FragReservoir without exposing the protected struct) |
+| `zcache/tags/SConscript` | Registers `ZCacheGlue.py` SimObjects and adds the four glue `.cc` sources |
+| `init.sh` | Copies `glue/*.hh`, `glue/*.cc`, `glue/ZCacheGlue.py` to `gem5/src/mem/cache/tags/` |
+
+### Fill flow (ZCacheGlue::handleFill)
+
+1. **Compress** — call `BPC::compress(pkt_chunks)` → get `compressedBits`; round up to `paddedSize` ∈ {8, 16, 32, 64} B.
+2. **Allocate** — `DecoupledDataStore::allocate(paddedSize)`.
+3. **Fragment-evict loop** — while `ptr == ALLOC_FAIL`: call `FragReservoir::getVictim(paddedSize)`; call `ZCacheTagsNew::forceInvalidate(victim)` + `DecoupledDataStore::deallocate(victim->ptr, victim->size)`; retry allocate.
+4. **Store** — `DecoupledDataStore::write(ptr, data, paddedSize)`; call `ZCacheTagsNew::setBlockDataPtr(blk, ptr, paddedSize)`.
+
+### Stats
+
+```
+system.glue.statFragEvictions           — reservoir-eviction events
+system.glue.statAvgInternalFragmentation — (paddedSize - rawSize) / paddedSize
+system.glue.statReservoirHitRate        — fraction of reservoir lookups satisfied
+```
+
+### Running the test
+
+```bash
+./init.sh
+cd gem5 && scons build/X86/gem5.opt -j$(sysctl -n hw.ncpu) && cd ..
+
+# CDZCache
+./gem5/build/X86/gem5.opt --outdir=m5out_cdzcache cdzcache_test.py
+
+# LRU baseline
+./gem5/build/X86/gem5.opt --outdir=m5out_lru cdzcache_test.py --use-standard-cache
+```
+
+### Wiring into a config script
+
+```python
+from m5.objects import (
+    NoncoherentCache, ZCacheTagsNew, ZCacheGlue,
+    DecoupledDataStore, FragReservoir,
+    ZCacheIndexingPolicy, ZCacheRP, BPC,
+)
+
+zcache_tags = ZCacheTagsNew(
+    walk_levels=3, num_candidates=16,
+    replacement_policy=ZCacheRP(bucket_size_fraction=0.05),
+    zcache_indexing_policy=ZCacheIndexingPolicy(),
+)
+bpc = BPC(max_compression_ratio=0)
+
+system.glue = ZCacheGlue(
+    zcache_tags=zcache_tags,
+    data_store=DecoupledDataStore(),
+    reservoir=FragReservoir(sample_interval=10),
+    compressor=bpc,
+)
+
+system.l2cache = NoncoherentCache(
+    size="256KiB", assoc=4,
+    tag_latency=4, data_latency=4, response_latency=4,
+    mshrs=16, tgts_per_mshr=8,
+    tags=zcache_tags,
+)
+```
+
+`ZCacheGlue.startup()` calls `zcache_tags->setGlue(this)` and `reservoir->setTagsRef(zcache_tags)` so the circular wiring completes before simulation starts.

@@ -62,6 +62,14 @@ class ZCacheRP : public Base
         const override;
 
     std::shared_ptr<ReplacementData> instantiateEntry() override;
+
+    // Read last-touch timestamp without exposing ZCacheRPData externally.
+    Tick getLastTouchTimestamp(
+            const std::shared_ptr<ReplacementData> &rd) const
+    {
+        return std::static_pointer_cast<const ZCacheRPData>(rd)
+                   ->lastTouchTimestamp;
+    }
 };
 
 } // namespace replacement_policy

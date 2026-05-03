@@ -42,6 +42,17 @@ SimObject(
     ],
 )
 
+# Compressed Decoupled ZCache glue layer
+SimObject(
+    "ZCacheGlue.py",
+    sim_objects=[
+        "DecoupledDataStore",
+        "FragReservoir",
+        "ZCacheTagsNew",
+        "ZCacheGlue",
+    ],
+)
+
 Source("base.cc")
 Source("base_set_assoc.cc")
 Source("compressed_tags.cc")
@@ -51,5 +62,11 @@ Source("sector_blk.cc")
 Source("sector_tags.cc")
 Source("super_blk.cc")
 Source("zcache_tags.cc")
+
+# Glue layer sources
+Source("decoupled_data_store.cc")
+Source("frag_reservoir.cc")
+Source("zcache_tags_new.cc")
+Source("zcache_glue.cc")
 
 GTest("dueling.test", "dueling.test.cc", "dueling.cc")

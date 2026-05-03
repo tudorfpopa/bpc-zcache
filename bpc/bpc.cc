@@ -103,6 +103,17 @@ BPC::compress(const std::vector<Base::Chunk>& chunks,
             compressed_bits = floor_bits;
     }
 
+    // Pad reported size to nearest power-of-2 byte boundary in [8B, blkSize].
+    // This aligns with the buddy-allocator granularities in DecoupledDataStore.
+    {
+        const int rawBytes = (compressed_bits + 7) / 8;
+        int paddedBytes = 8;
+        while (paddedBytes < rawBytes && paddedBytes < blkSize)
+            paddedBytes <<= 1;
+        if (paddedBytes > blkSize) paddedBytes = blkSize;
+        compressed_bits = paddedBytes * 8;
+    }
+
     comp_data->setSizeBits(compressed_bits);
 
     // Simple latency model — 1 cycle each
