@@ -44,6 +44,9 @@ class ZCacheGlue : public SimObject
     // evict via reservoir if fragmented, store pointer in blk's metadata.
     void handleFill(const PacketPtr pkt, CacheBlk *blk);
 
+    // Called by ZCacheTagsNew::invalidate to return a pool slot on normal eviction.
+    void deallocatePoolSlot(uint32_t ptr, uint32_t size);
+
   private:
     ZCacheTagsNew       *zcacheTags;
     DecoupledDataStore  *dataStore;

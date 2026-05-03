@@ -128,20 +128,26 @@ void ZCacheGlue::handleFill(const PacketPtr pkt, CacheBlk *blk)
             return;
         }
 
-        glueStats.statReservoirHits++;
-        glueStats.statFragEvictions++;
-
         CacheBlk *victim = static_cast<CacheBlk *>(victimEntry);
 
         // Retrieve and release the victim's data-store slot.
         uint32_t victimPtr  = zcacheTags->getBlockDataPtr(victim);
         uint32_t victimSize = zcacheTags->getBlockAllocSize(victim);
 
-        zcacheTags->forceInvalidate(victim); // clears tag + compressed metadata
-
-        if (victimPtr != DecoupledDataStore::ALLOC_FAIL && victimSize > 0) {
-            dataStore->deallocate(victimPtr, victimSize);
+        // Guard: skip stale reservoir entries (block invalidated or re-inserted
+        // since it was sampled, so blkDataPtr is ALLOC_FAIL — nothing to free).
+        if (!victim->isValid()
+                || victimPtr == DecoupledDataStore::ALLOC_FAIL
+                || victimSize == 0) {
+            ptr = dataStore->allocate(paddedSize);
+            continue;
         }
+
+        glueStats.statReservoirHits++;
+        glueStats.statFragEvictions++;
+
+        zcacheTags->forceInvalidate(victim); // clears tag + compressed metadata
+        dataStore->deallocate(victimPtr, victimSize);
 
         ptr = dataStore->allocate(paddedSize);
     }
@@ -154,6 +160,15 @@ void ZCacheGlue::handleFill(const PacketPtr pkt, CacheBlk *blk)
     // and is served through the normal gem5 data path).
     dataStore->write(ptr, rawData, paddedSize);
     zcacheTags->setBlockDataPtr(blk, ptr, paddedSize);
+}
+
+// ---------------------------------------------------------------------------
+// deallocatePoolSlot — called by ZCacheTagsNew::invalidate on normal evictions
+// ---------------------------------------------------------------------------
+
+void ZCacheGlue::deallocatePoolSlot(uint32_t ptr, uint32_t size)
+{
+    dataStore->deallocate(ptr, size);
 }
 
 } // namespace gem5

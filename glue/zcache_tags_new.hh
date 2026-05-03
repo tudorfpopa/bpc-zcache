@@ -45,6 +45,12 @@ class ZCacheTagsNew : public ZCacheTags
     // Call ZCacheGlue::handleFill() with the incoming packet after inserting.
     void insertBlock(const PacketPtr pkt, CacheBlk *blk) override;
 
+    // Standard invalidation path — called by BaseCache::handleEvictions for
+    // normal LRU-style evictions.  Frees the block's pool slot before clearing
+    // the tag; prevents the pool-slot leak that occurs when doMoveBlock
+    // overwrites blkDataPtr[dst] without freeing the victim's existing slot.
+    void invalidate(CacheBlk *blk) override;
+
     // Invalidate blk directly, without triggering a cuckoo walk.
     // Called by ZCacheGlue when the FragReservoir selects this block as victim.
     void forceInvalidate(CacheBlk *blk);

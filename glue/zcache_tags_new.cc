@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include "base/logging.hh"
+#include "mem/cache/tags/base_set_assoc.hh"
 #include "mem/cache/tags/decoupled_data_store.hh"
 
 namespace gem5 {
@@ -32,6 +33,27 @@ void ZCacheTagsNew::insertBlock(const PacketPtr pkt, CacheBlk *blk)
     if (glue && pkt->hasData()) {
         glue->handleFill(pkt, blk);
     }
+}
+
+// ---------------------------------------------------------------------------
+// invalidate — standard eviction path called by BaseCache::handleEvictions.
+// Frees the pool slot BEFORE the tag is cleared so doMoveBlock never
+// overwrites blkDataPtr[dst] for a dst that still has an unreleased slot.
+// ---------------------------------------------------------------------------
+
+void ZCacheTagsNew::invalidate(CacheBlk *blk)
+{
+    uint32_t idx  = getBlockIndex(blk);
+    uint32_t ptr  = blkDataPtr[idx];
+    uint32_t size = blkAllocSize[idx];
+
+    if (glue && ptr != DecoupledDataStore::ALLOC_FAIL && size > 0) {
+        glue->deallocatePoolSlot(ptr, size);
+    }
+    blkDataPtr[idx]   = DecoupledDataStore::ALLOC_FAIL;
+    blkAllocSize[idx] = 0;
+
+    BaseSetAssoc::invalidate(blk);
 }
 
 // ---------------------------------------------------------------------------
