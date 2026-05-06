@@ -17,6 +17,7 @@ import argparse
 import time
 
 import m5
+from m5.params import NULL
 from m5.objects import (
     Root,
     LRURP,
@@ -71,14 +72,14 @@ requires(isa_required=ISA.X86, kvm_required=not args.atomic_boot)
 class LRUHierarchy(PrivateL1SharedL2CacheHierarchy):
     def incorporate_cache(self, board):
         super().incorporate_cache(board)
-        self.membus.snoop_filter.max_capacity = "32MiB"
+        self.membus.snoop_filter = NULL
         self.l2cache.replacement_policy = LRURP()
 
 
 class BPCHierarchy(PrivateL1SharedL2CacheHierarchy):
     def incorporate_cache(self, board):
         super().incorporate_cache(board)
-        self.membus.snoop_filter.max_capacity = "32MiB"
+        self.membus.snoop_filter = NULL
         ratio = args.max_compression_ratio
         self.l2cache.tags = CompressedTags(max_compression_ratio=ratio)
         self.l2cache.compressor = BPC(max_compression_ratio=ratio)
@@ -88,7 +89,7 @@ class BPCHierarchy(PrivateL1SharedL2CacheHierarchy):
 class ZCacheHierarchy(PrivateL1SharedL2CacheHierarchy):
     def incorporate_cache(self, board):
         super().incorporate_cache(board)
-        self.membus.snoop_filter.max_capacity = "32MiB"
+        self.membus.snoop_filter = NULL
         self.l2cache.tags = ZCacheTags(
             walk_levels=3,
             num_candidates=16,
@@ -101,7 +102,7 @@ class ZCacheHierarchy(PrivateL1SharedL2CacheHierarchy):
 class CDZCacheHierarchy(PrivateL1SharedL2CacheHierarchy):
     def incorporate_cache(self, board):
         super().incorporate_cache(board)
-        self.membus.snoop_filter.max_capacity = "32MiB"
+        self.membus.snoop_filter = NULL
         zcache_tags = ZCacheTagsNew(
             walk_levels=3,
             num_candidates=16,
