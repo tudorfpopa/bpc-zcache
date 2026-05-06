@@ -60,9 +60,12 @@ parser.add_argument("--size", required=True, choices=size_choices)
 parser.add_argument("--variant", required=True, choices=variant_choices)
 parser.add_argument("--max-compression-ratio", type=int, default=2,
                     help="BPC cap; only used by --variant bpc.")
+parser.add_argument("--atomic-boot", action="store_true",
+                    help="Boot under ATOMIC instead of KVM. Slower, but avoids "
+                         "KVM+CompressedTags panic for --variant bpc.")
 args = parser.parse_args()
 
-requires(isa_required=ISA.X86, kvm_required=True)
+requires(isa_required=ISA.X86, kvm_required=not args.atomic_boot)
 
 
 class LRUHierarchy(PrivateL1SharedL2CacheHierarchy):
@@ -95,6 +98,7 @@ class ZCacheHierarchy(PrivateL1SharedL2CacheHierarchy):
 class CDZCacheHierarchy(PrivateL1SharedL2CacheHierarchy):
     def incorporate_cache(self, board):
         super().incorporate_cache(board)
+        self.membus.snoop_filter.max_capacity = "32MiB"
         zcache_tags = ZCacheTagsNew(
             walk_levels=3,
             num_candidates=16,
@@ -121,7 +125,7 @@ cache_hierarchy = HIERARCHY(
 memory = DualChannelDDR4_2400(size="3GiB")
 
 processor = SimpleSwitchableProcessor(
-    starting_core_type=CPUTypes.KVM,
+    starting_core_type=CPUTypes.ATOMIC if args.atomic_boot else CPUTypes.KVM,
     switch_core_type=CPUTypes.TIMING,
     isa=ISA.X86,
     num_cores=2,

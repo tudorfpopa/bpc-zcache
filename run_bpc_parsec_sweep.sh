@@ -16,7 +16,8 @@ CONFIG="${REPO_ROOT}/cdzcache_parsec.py"
 
 SIZE="${SIZE:-simsmall}"
 JOBS="${JOBS:-1}"
-VARIANT=bpc
+VARIANT="${VARIANT:-bpc}"
+
 
 PRIORITY=(blackscholes swaptions freqmine streamcluster)
 REST=(bodytrack canneal dedup facesim ferret fluidanimate raytrace vips x264)
@@ -35,9 +36,14 @@ run_one() {
     local outdir="${REPO_ROOT}/m5out_${bench}_${VARIANT}"
     local log="${outdir}/run.log"
     mkdir -p "$outdir"
+    # BPC variant under full-system PARSEC trips an upstream gem5 CompressedTags
+    # panic when booted under KVM. ATOMIC boot avoids it (slow but reliable).
+    local extra=()
+    [[ "$VARIANT" == "bpc" ]] && extra+=(--atomic-boot)
     echo "[$(date +%H:%M:%S)] start ${bench} -> ${outdir}"
     if "$GEM5" --outdir="$outdir" "$CONFIG" \
             --benchmark "$bench" --size "$SIZE" --variant "$VARIANT" \
+            "${extra[@]}" \
             >"$log" 2>&1; then
         echo "[$(date +%H:%M:%S)] done  ${bench}"
     else
