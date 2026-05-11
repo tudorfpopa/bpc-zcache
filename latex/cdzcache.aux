@@ -3,20 +3,33 @@
 \citation{kim2016bpc}
 \citation{pan2025xorcache}
 \citation{sanchez2010zcache,pagh2004cuckoo}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction and Motivation}{1}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {II}Background and Design Challenges}{1}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {III}CDZ-Cache Design}{1}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Compressor System}{1}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Data Allocation System}{1}{}\protected@file@percent }
 \citation{binkert2011gem5,lowepower2020gem5}
 \citation{bienia2008parsec,bienia2011thesis}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-level CDZ-Cache diagram}}{2}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-level CDZ-Cache diagram.}}{2}{}\protected@file@percent }
+\newlabel{fig:arch}{{1}{2}{}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}Z-Cache System}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Evaluation}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Methodology}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Results}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {V}Conclusion and Future Work}{2}{}\protected@file@percent }
 \citation{shah2022mockingjay}
-\bibstyle{unsrtnat}
-\bibdata{references:}
-\bibcite{sanchez2010zcache}{{1}{2010}{{Sanchez and Kozyrakis}}{{}}}
-\bibcite{kim2016bpc}{{2}{2016}{{Kim et~al.}}{{Kim, Sullivan, Choukse, and Erez}}}
-\bibcite{pan2025xorcache}{{3}{2025}{{Pan and Miguel}}{{}}}
-\bibcite{pagh2004cuckoo}{{4}{2004}{{Pagh and Rodler}}{{}}}
-\bibcite{binkert2011gem5}{{5}{2011}{{Binkert et~al.}}{{Binkert, Beckmann, Black, Reinhardt, Saidi, Basu, Hestness, Hower, Krishna, Sardashti, Sen, Sewell, Shoaib, Vaish, Hill, and Wood}}}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces L2 miss rate (\%) and demand miss count for three cache configurations across six PARSEC workloads, simulated with gem5 full-system simulation (x86, 2-core, 16-way L2, 1 THz simulated frequency). \textbf  {CDZ}: Z-Cache (256 KiB) augmented with BDI compression. \textbf  {Z-Cache B1}: Z-Cache baseline (256 KiB). \textbf  {Z-Cache×2 B2}: Z-Cache (512 KiB). Bar widths are normalized to the worst-performing configuration per metric per workload. Area overhead: CDZ $\approx $ 1.15×, Z-Cache B1 = 1.00× (reference), Z-Cache×2 B2 $\approx $ 1.90×. K = thousands; M = millions.}}{3}{}\protected@file@percent }
-\bibcite{lowepower2020gem5}{{6}{2020}{{Lowe-Power et~al.}}{{}}}
-\bibcite{bienia2008parsec}{{7}{2008}{{Bienia et~al.}}{{Bienia, Kumar, Singh, and Li}}}
-\bibcite{bienia2011thesis}{{8}{2011}{{Bienia}}{{}}}
-\bibcite{shah2022mockingjay}{{9}{2022}{{Shah et~al.}}{{Shah, Jain, and Lin}}}
-\gdef \@abspage@last{4}
+\bibstyle{IEEEtran}
+\bibdata{references}
+\bibcite{sanchez2010zcache}{1}
+\bibcite{kim2016bpc}{2}
+\bibcite{pan2025xorcache}{3}
+\bibcite{pagh2004cuckoo}{4}
+\bibcite{binkert2011gem5}{5}
+\bibcite{lowepower2020gem5}{6}
+\bibcite{bienia2008parsec}{7}
+\bibcite{bienia2011thesis}{8}
+\bibcite{shah2022mockingjay}{9}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces L2 miss rate (\%) and demand miss count for three cache configurations across six PARSEC workloads, simulated with gem5 full-system simulation (x86, 2-core, 16-way L2, 1\,THz simulated frequency). \textbf  {CDZ}: Z-Cache (256\,KiB) augmented with BPC compression. \textbf  {Z-Cache B1}: Z-Cache baseline (256\,KiB). \textbf  {Z-Cache$\times $2 B2}: Z-Cache (512\,KiB). Bar widths are normalized to the worst-performing configuration per metric per workload. Area overhead: CDZ $\approx 1.15\times $, Z-Cache B1 $= 1.00\times $ (reference), Z-Cache$\times $2 B2 $\approx 1.90\times $. K $=$ thousands; M $=$ millions.}}{3}{}\protected@file@percent }
+\newlabel{fig:results}{{2}{3}{}{figure.2}{}}
+\@writefile{toc}{\contentsline {section}{References}{3}{}\protected@file@percent }
+\gdef \@abspage@last{3}
