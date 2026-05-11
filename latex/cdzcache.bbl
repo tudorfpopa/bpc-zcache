@@ -1,0 +1,60 @@
+\begin{thebibliography}{9}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Sanchez and Kozyrakis(2010)]{sanchez2010zcache}
+Daniel Sanchez and Christos Kozyrakis.
+\newblock The {ZCache}: Decoupling ways and associativity.
+\newblock In \emph{43rd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO)}, pages 187--198, 2010.
+\newblock \doi{10.1109/MICRO.2010.20}.
+
+\bibitem[Kim et~al.(2016)Kim, Sullivan, Choukse, and Erez]{kim2016bpc}
+Jungrae Kim, Michael Sullivan, Esha Choukse, and Mattan Erez.
+\newblock Bit-plane compression: Transforming data for better compression in many-core architectures.
+\newblock In \emph{43rd ACM/IEEE International Symposium on Computer Architecture (ISCA)}, pages 329--340, 2016.
+\newblock \doi{10.1109/ISCA.2016.37}.
+
+\bibitem[Pan and Miguel(2025)]{pan2025xorcache}
+Zhewen Pan and Joshua~San Miguel.
+\newblock The {XOR} cache: A catalyst for compression.
+\newblock In \emph{52nd ACM/IEEE International Symposium on Computer Architecture (ISCA)}, 2025.
+\newblock \doi{10.1145/3695053.3730995}.
+
+\bibitem[Pagh and Rodler(2004)]{pagh2004cuckoo}
+Rasmus Pagh and Flemming~Friche Rodler.
+\newblock Cuckoo hashing.
+\newblock \emph{Journal of Algorithms}, 51\penalty0 (2):\penalty0 122--144, 2004.
+\newblock \doi{10.1016/j.jalgor.2003.12.002}.
+
+\bibitem[Binkert et~al.(2011)Binkert, Beckmann, Black, Reinhardt, Saidi, Basu, Hestness, Hower, Krishna, Sardashti, Sen, Sewell, Shoaib, Vaish, Hill, and Wood]{binkert2011gem5}
+Nathan Binkert, Bradford Beckmann, Gabriel Black, Steven~K. Reinhardt, Ali Saidi, Arkaprava Basu, Joel Hestness, Derek~R. Hower, Tushar Krishna, Somayeh Sardashti, Rathijit Sen, Korey Sewell, Muhammad Shoaib, Nilay Vaish, Mark~D. Hill, and David~A. Wood.
+\newblock The gem5 simulator.
+\newblock \emph{ACM SIGARCH Computer Architecture News}, 39\penalty0 (2):\penalty0 1--7, 2011.
+\newblock \doi{10.1145/2024716.2024718}.
+
+\bibitem[Lowe-Power et~al.(2020)]{lowepower2020gem5}
+Jason Lowe-Power et~al.
+\newblock The gem5 simulator: Version 20.0+.
+\newblock \emph{arXiv preprint arXiv:2007.03152}, 2020.
+
+\bibitem[Bienia et~al.(2008)Bienia, Kumar, Singh, and Li]{bienia2008parsec}
+Christian Bienia, Sanjeev Kumar, Jaswinder~Pal Singh, and Kai Li.
+\newblock The {PARSEC} benchmark suite: Characterization and architectural implications.
+\newblock In \emph{17th International Conference on Parallel Architectures and Compilation Techniques (PACT)}, pages 72--81, 2008.
+\newblock \doi{10.1145/1454115.1454128}.
+
+\bibitem[Bienia(2011)]{bienia2011thesis}
+Christian Bienia.
+\newblock \emph{Benchmarking Modern Multiprocessors}.
+\newblock PhD thesis, Princeton University, 2011.
+
+\bibitem[Shah et~al.(2022)Shah, Jain, and Lin]{shah2022mockingjay}
+Ishan Shah, Akanksha Jain, and Calvin Lin.
+\newblock Effective mimicry of {Belady's} {MIN} policy.
+\newblock In \emph{IEEE International Symposium on High-Performance Computer Architecture (HPCA)}, pages 558--572, 2022.
+\newblock \doi{10.1109/HPCA53966.2022.00048}.
+
+\end{thebibliography}
